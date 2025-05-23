@@ -29,19 +29,21 @@ WORDPRESS_DB_PASSWORD = "wordpress"
 [hook]
 on-activate = '''
 
-# MySQL directories
+# Project data directories (persistent)
+export PROJECT_DATA_DIR="$FLOX_ENV_PROJECT/data"
+export MYSQL_DATADIR="$PROJECT_DATA_DIR/mysql"
+export WORDPRESS_DIR="$FLOX_ENV_PROJECT/wordpress"
+
+# Runtime directories (ephemeral)
 export MYSQL_DIR="$FLOX_ENV_CACHE/mysql"
-export MYSQL_DATADIR="$MYSQL_DIR/data"
 export MYSQL_SOCKET="$MYSQL_DIR/mysql.sock"
 export MYSQL_PIDFILE="$MYSQL_DIR/mysql.pid"
-
-# WordPress directories
-export WORDPRESS_DIR="$FLOX_ENV_PROJECT/wordpress"
 export NGINX_DIR="$FLOX_ENV_CACHE/nginx"
 export PHP_FPM_DIR="$FLOX_ENV_CACHE/php-fpm"
 
 # Initialize MySQL data directory
 if [[ ! -d "$MYSQL_DATADIR" ]]; then
+  mkdir -p "$PROJECT_DATA_DIR"
   mkdir -p "$MYSQL_DIR"
   mysqld --initialize-insecure --datadir="$MYSQL_DATADIR" --user=$(whoami)
   echo "✅ MySQL initialized"

@@ -75,7 +75,7 @@ If you encounter MySQL connection errors, here are the most common issues and so
 flox services stop
 
 # Remove MySQL data directory to force clean re-initialization
-rm -rf .flox/cache/mysql/data
+rm -rf data/mysql
 
 # Restart with clean database
 flox activate
@@ -117,16 +117,76 @@ flox-wpstack/
 ├── .flox/
 │   ├── env/
 │   │   └── manifest.toml          # Flox environment configuration
-│   └── cache/
-│       ├── mysql/                 # MySQL data directory and config
+│   └── cache/                     # Ephemeral runtime files
+│       ├── mysql/                 # MySQL runtime (socket, pid)
 │       ├── nginx/                 # Nginx config and logs
 │       └── php-fpm/              # PHP-FPM config
+├── data/                          # Persistent project data
+│   └── mysql/                     # MySQL database files
 ├── wordpress/                     # WordPress installation
 │   ├── wp-config.php             # Auto-generated WordPress config
 │   └── [WordPress files...]
 ├── latest.tar.gz                 # WordPress download archive
 └── README.md
 ```
+
+## Project Isolation
+
+Each project has its own:
+- **Persistent data** in `data/` directory (database, uploads, etc.)
+- **WordPress installation** in `wordpress/` directory
+- **Runtime cache** in `.flox/cache/` (can be safely deleted)
+
+This means you can:
+- Run multiple WordPress projects simultaneously (different directories)
+- Clean cache without losing data: `rm -rf .flox/cache/`
+- Backup just the important parts: `data/` and `wordpress/`
+
+## Migration & Backup
+
+### Moving to a New Environment
+
+To migrate your WordPress stack to a new location or system, copy these essential components:
+
+```bash
+# In your new location
+cp -r /old/path/data ./                        # Database files
+cp -r /old/path/wordpress ./                   # WordPress installation  
+cp /old/path/.flox/env/manifest.toml .flox/env/ # Infrastructure config
+
+# Then activate
+flox activate --start-services
+```
+
+### What Each Component Contains
+
+- **`data/mysql/`** - Database tables, user accounts, WordPress content
+- **`wordpress/`** - WordPress core, themes, plugins, uploads, configuration
+- **`.flox/env/manifest.toml`** - Infrastructure definition (MySQL, Nginx, PHP versions)
+
+### Backup Strategies
+
+**Full backup (complete environment):**
+```bash
+tar -czf wordpress-backup.tar.gz data/ wordpress/ .flox/env/manifest.toml
+```
+
+**Content-only backup (minimal):**
+```bash
+tar -czf wordpress-content.tar.gz data/mysql/ wordpress/wp-content/
+```
+
+**Database-only backup:**
+```bash
+mysqldump -u root -pwordpress wordpress > wordpress-db.sql
+```
+
+### Migration Benefits
+
+- **No system dependencies** - Everything is contained in project folders
+- **Multiple environments** - Run different WordPress projects simultaneously
+- **Version control friendly** - Can exclude `data/` for shared development
+- **Easy cleanup** - Delete project folder to remove everything
 
 ## Development Workflow
 
@@ -193,10 +253,12 @@ WORDPRESS_DB_PASSWORD = "wordpress"
 
 ## Tips
 
-- **Clean restart**: Remove `.flox/cache/` to reset all service data
+- **Clean restart**: Remove `.flox/cache/` to reset runtime data (keeps your database)
 - **WordPress updates**: Delete `wordpress/` and `latest.tar.gz`, then `flox activate`
-- **Database reset**: Delete `.flox/cache/mysql/data/` and restart services
+- **Database reset**: Delete `data/mysql/` and restart services
+- **Full project reset**: Delete `data/`, `wordpress/`, and `latest.tar.gz`
 - **Logs**: Check `.flox/cache/*/` directories for service-specific logs
+- **Multiple projects**: Each project directory is completely isolated
 
 ## Requirements
 
