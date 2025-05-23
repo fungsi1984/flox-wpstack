@@ -1,0 +1,230 @@
+version = 1
+
+
+[install]
+gum.pkg-path = "gum"
+
+# MySQL for WordPress
+mysql80.pkg-path = "mysql80"
+
+# WordPress dependencies
+php.pkg-path = "php82"
+wordpress.pkg-path = "wordpress"
+nginx.pkg-path = "nginx"
+
+[vars]
+MYSQL_HOST = "127.0.0.1"
+MYSQL_PORT = "3306"
+MYSQL_USER = "root"
+MYSQL_PASSWORD = "wordpress"
+MYSQL_DATABASE = "wordpress"
+
+# WordPress vars
+WORDPRESS_DB_HOST = "127.0.0.1"
+WORDPRESS_DB_NAME = "wordpress"
+WORDPRESS_DB_USER = "root"
+WORDPRESS_DB_PASSWORD = "wordpress"
+
+
+[hook]
+on-activate = '''
+
+# MySQL directories
+export MYSQL_DIR="$FLOX_ENV_CACHE/mysql"
+export MYSQL_DATADIR="$MYSQL_DIR/data"
+export MYSQL_SOCKET="$MYSQL_DIR/mysql.sock"
+export MYSQL_PIDFILE="$MYSQL_DIR/mysql.pid"
+
+# WordPress directories
+export WORDPRESS_DIR="$FLOX_ENV_PROJECT/wordpress"
+export NGINX_DIR="$FLOX_ENV_CACHE/nginx"
+export PHP_FPM_DIR="$FLOX_ENV_CACHE/php-fpm"
+
+# Initialize MySQL data directory
+if [[ ! -d "$MYSQL_DATADIR" ]]; then
+  mkdir -p "$MYSQL_DIR"
+  mysqld --initialize-insecure --datadir="$MYSQL_DATADIR" --user=$(whoami)
+  echo "✅ MySQL initialized"
+fi
+
+# Create MySQL config
+if [[ ! -f "$MYSQL_DIR/my.cnf" ]]; then
+  tee "$MYSQL_DIR/my.cnf" > /dev/null << EOF
+[mysqld]
+datadir = $MYSQL_DATADIR
+socket = $MYSQL_SOCKET
+pid-file = $MYSQL_PIDFILE
+port = $MYSQL_PORT
+bind-address = $MYSQL_HOST
+skip-networking = 0
+EOF
+  echo "✅ MySQL configuration created"
+fi
+
+# Setup WordPress
+if [[ ! -d "$WORDPRESS_DIR" ]]; then
+  mkdir -p "$WORDPRESS_DIR"
+  cd "$FLOX_ENV_PROJECT"
+  if [[ ! -f "latest.tar.gz" ]]; then
+    wget -q https://wordpress.org/latest.tar.gz
+  fi
+  tar -xzf latest.tar.gz
+  echo "✅ WordPress downloaded and extracted"
+fi
+
+# Setup MySQL database creation script
+tee "$MYSQL_DIR/setup.sql" > /dev/null << EOF
+CREATE DATABASE IF NOT EXISTS $WORDPRESS_DB_NAME;
+SET PASSWORD FOR 'root'@'localhost' = PASSWORD('$WORDPRESS_DB_PASSWORD');
+GRANT ALL PRIVILEGES ON $WORDPRESS_DB_NAME.* TO '$WORDPRESS_DB_USER'@'localhost';
+GRANT ALL PRIVILEGES ON $WORDPRESS_DB_NAME.* TO '$WORDPRESS_DB_USER'@'127.0.0.1';
+SET PASSWORD FOR 'root'@'127.0.0.1' = PASSWORD('$WORDPRESS_DB_PASSWORD');
+FLUSH PRIVILEGES;
+EOF
+
+# Create wp-config.php (always recreate to update settings)
+rm -f "$WORDPRESS_DIR/wp-config.php"
+tee "$WORDPRESS_DIR/wp-config.php" > /dev/null << EOF
+<?php
+define('DB_NAME', '$WORDPRESS_DB_NAME');
+define('DB_USER', '$WORDPRESS_DB_USER');
+define('DB_PASSWORD', '$WORDPRESS_DB_PASSWORD');
+define('DB_HOST', '$WORDPRESS_DB_HOST');
+define('DB_CHARSET', 'utf8');
+define('DB_COLLATE', '');
+
+define('AUTH_KEY',         'put your unique phrase here');
+define('SECURE_AUTH_KEY',  'put your unique phrase here');
+define('LOGGED_IN_KEY',    'put your unique phrase here');
+define('NONCE_KEY',        'put your unique phrase here');
+define('AUTH_SALT',        'put your unique phrase here');
+define('SECURE_AUTH_SALT', 'put your unique phrase here');
+define('LOGGED_IN_SALT',   'put your unique phrase here');
+define('NONCE_SALT',       'put your unique phrase here');
+
+\$table_prefix = 'wp_';
+define('WP_DEBUG', true);
+define('WP_DEBUG_LOG', true);
+
+if ( !defined('ABSPATH') )
+    define('ABSPATH', dirname(__FILE__) . '/');
+
+require_once(ABSPATH . 'wp-settings.php');
+EOF
+echo "✅ WordPress wp-config.php created"
+
+# Setup nginx config
+mkdir -p "$NGINX_DIR"
+rm -f "$NGINX_DIR/nginx.conf"  # Always recreate config
+tee "$NGINX_DIR/nginx.conf" > /dev/null << EOF
+error_log $NGINX_DIR/error.log;
+pid $NGINX_DIR/nginx.pid;
+
+events { worker_connections 1024; }
+http {
+  default_type application/octet-stream;
+  access_log $NGINX_DIR/access.log;
+  
+  # MIME types
+  types {
+    text/html html htm;
+    text/css css;
+    application/javascript js;
+    image/jpeg jpg jpeg;
+    image/png png;
+    image/gif gif;
+    image/svg+xml svg;
+    image/x-icon ico;
+    font/woff woff;
+    font/woff2 woff2;
+  }
+  
+  server {
+    listen 8080;
+    root $WORDPRESS_DIR;
+    index index.php index.html;
+    
+    # Static files
+    location ~* \.(css|js|png|jpg|jpeg|gif|ico|svg|woff|woff2)\$ {
+      expires 1y;
+      add_header Cache-Control "public, immutable";
+      try_files \$uri =404;
+    }
+    
+    location / {
+      try_files \$uri \$uri/ /index.php?\$args;
+    }
+    
+    location ~ \.php\$ {
+      try_files \$uri =404;
+      fastcgi_pass 127.0.0.1:9000;
+      fastcgi_index index.php;
+      fastcgi_read_timeout 300;
+      fastcgi_param SCRIPT_FILENAME \$document_root\$fastcgi_script_name;
+      fastcgi_param QUERY_STRING \$query_string;
+      fastcgi_param REQUEST_METHOD \$request_method;
+      fastcgi_param CONTENT_TYPE \$content_type;
+      fastcgi_param CONTENT_LENGTH \$content_length;
+      fastcgi_param SCRIPT_NAME \$fastcgi_script_name;
+      fastcgi_param REQUEST_URI \$request_uri;
+      fastcgi_param DOCUMENT_URI \$document_uri;
+      fastcgi_param DOCUMENT_ROOT \$document_root;
+      fastcgi_param SERVER_PROTOCOL \$server_protocol;
+      fastcgi_param GATEWAY_INTERFACE CGI/1.1;
+      fastcgi_param SERVER_SOFTWARE nginx/\$nginx_version;
+      fastcgi_param REMOTE_ADDR \$remote_addr;
+      fastcgi_param REMOTE_PORT \$remote_port;
+      fastcgi_param SERVER_ADDR \$server_addr;
+      fastcgi_param SERVER_PORT \$server_port;
+      fastcgi_param SERVER_NAME \$server_name;
+      fastcgi_param HTTPS off;
+    }
+  }
+}
+EOF
+echo "✅ Nginx configuration created"
+
+# Setup PHP-FPM config
+mkdir -p "$PHP_FPM_DIR"
+if [[ ! -f "$PHP_FPM_DIR/php-fpm.conf" ]]; then
+  tee "$PHP_FPM_DIR/php-fpm.conf" > /dev/null << EOF
+[global]
+pid = $PHP_FPM_DIR/php-fpm.pid
+error_log = $PHP_FPM_DIR/php-fpm.log
+
+[www]
+listen = 127.0.0.1:9000
+pm = dynamic
+pm.max_children = 5
+pm.start_servers = 2
+pm.min_spare_servers = 1
+pm.max_spare_servers = 3
+EOF
+  echo "✅ PHP-FPM configuration created"
+fi
+
+gum style --border double --margin "1 2" --padding "1 4" \
+  'Start all services:' \
+  '  👉 flox services start' \
+  '  👉 flox activate --start-services' '' \
+  'Access WordPress:' \
+  '  👉 http://localhost:8080' '' \
+  'Database connection info:' \
+  "  Host: $WORDPRESS_DB_HOST" \
+  "  Database: $WORDPRESS_DB_NAME" \
+  "  Username: $WORDPRESS_DB_USER" \
+  "  Password: $WORDPRESS_DB_PASSWORD"
+
+'''
+
+[services]
+mysql.command = "mysqld --defaults-file=$MYSQL_DIR/my.cnf --init-file=$MYSQL_DIR/setup.sql"
+php-fpm.command = "php-fpm -F -y $PHP_FPM_DIR/php-fpm.conf"
+nginx.command = "nginx -c $NGINX_DIR/nginx.conf -g 'daemon off;'"
+
+
+[options]
+systems = [
+  "x86_64-linux",
+]
+
