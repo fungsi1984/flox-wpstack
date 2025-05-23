@@ -8,6 +8,7 @@ A complete WordPress development environment using [Flox](https://flox.dev) with
 - **MySQL 8.0** - Database server with custom data directory
 - **PHP 8.2** - With PHP-FPM for processing
 - **Nginx** - Web server with WordPress-optimized configuration
+- **Adminer** - Web-based database management tool
 
 ## Quick Start
 
@@ -23,6 +24,9 @@ flox services start
 
 # Access WordPress
 open http://localhost:8080
+
+# Access Adminer (Database Management)
+open http://localhost:8080/adminer.php
 ```
 
 ## Architecture
@@ -196,11 +200,23 @@ mysqldump -u root -pwordpress wordpress > wordpress-db.sql
    flox services start
    ```
 
-2. **Access your site:**
-   - WordPress: http://localhost:8080
-   - Direct PHP files: Place in `wordpress/` directory
+2. **Access your sites:**
+   - **WordPress**: http://localhost:8080
+   - **Adminer (Database Management)**: http://localhost:8080/adminer.php
+   - **Direct PHP files**: Place in `wordpress/` directory
 
 3. **Database access:**
+   
+   **Option A - Adminer (Web Interface):**
+   1. Go to http://localhost:8080/adminer.php
+   2. Login with:
+      - **System**: MySQL
+      - **Server**: `127.0.0.1` ⚠️ **Use IP, NOT "localhost"**
+      - **Username**: root
+      - **Password**: wordpress
+      - **Database**: wordpress
+   
+   **Option B - Command Line:**
    ```bash
    mysql -u root -pwordpress wordpress
    ```
@@ -209,6 +225,39 @@ mysqldump -u root -pwordpress wordpress > wordpress-db.sql
    ```bash
    flox services stop
    ```
+
+## Database Management with Adminer
+
+Adminer is included as a lightweight database management tool that runs alongside WordPress.
+
+### Accessing Adminer
+
+1. **URL**: http://localhost:8080/adminer.php
+2. **Login credentials**:
+   - **System**: MySQL
+   - **Server**: `127.0.0.1` ⚠️ **Important: Use IP, NOT "localhost"**
+   - **Username**: root
+   - **Password**: wordpress
+   - **Database**: wordpress (optional, can browse all databases)
+
+### What You Can Do with Adminer
+
+- **Browse tables** - View WordPress tables (wp_posts, wp_users, etc.)
+- **Execute SQL queries** - Run custom queries directly
+- **Import/Export data** - Backup or restore database content
+- **Manage users** - Create/modify database users and permissions
+- **View structure** - Examine table schemas and relationships
+- **Edit data** - Modify records directly (use with caution)
+
+### Adminer vs Command Line
+
+| Feature | Adminer | Command Line |
+|---------|---------|--------------|
+| **Ease of use** | Visual interface | Requires SQL knowledge |
+| **Data browsing** | Table view with pagination | Text output only |
+| **Query building** | Visual query builder | Manual SQL writing |
+| **Import/Export** | File upload interface | mysqldump commands |
+| **Speed** | Good for exploration | Faster for bulk operations |
 
 ## Configuration Details
 

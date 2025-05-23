@@ -74,6 +74,13 @@ if [[ ! -d "$WORDPRESS_DIR" ]]; then
   echo "✅ WordPress downloaded and extracted"
 fi
 
+# Setup Adminer for database management
+if [[ ! -f "$WORDPRESS_DIR/adminer.php" ]]; then
+  cd "$WORDPRESS_DIR"
+  wget -q -O adminer.php https://www.adminer.org/latest.php
+  echo "✅ Adminer downloaded"
+fi
+
 # Setup MySQL database creation script
 tee "$MYSQL_DIR/setup.sql" > /dev/null << EOF
 CREATE DATABASE IF NOT EXISTS $WORDPRESS_DB_NAME;
@@ -209,8 +216,9 @@ gum style --border double --margin "1 2" --padding "1 4" \
   'Start all services:' \
   '  👉 flox services start' \
   '  👉 flox activate --start-services' '' \
-  'Access WordPress:' \
-  '  👉 http://localhost:8080' '' \
+  'Access your sites:' \
+  '  👉 WordPress: http://localhost:8080' \
+  '  👉 Adminer (Database): http://localhost:8080/adminer.php' '' \
   'Database connection info:' \
   "  Host: $WORDPRESS_DB_HOST" \
   "  Database: $WORDPRESS_DB_NAME" \
